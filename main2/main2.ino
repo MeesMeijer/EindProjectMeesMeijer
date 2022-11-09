@@ -1,7 +1,6 @@
 #include "esp_adc_cal.h"
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-
 #include <WiFi.h>
 
 
