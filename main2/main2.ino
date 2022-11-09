@@ -3,10 +3,14 @@
 #include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
 
-
 #define PIN_ANALOG_IN 4                
 #define DEFAULT_VREF 1100              
 #define NO_OF_SAMPLES 64               
+
+#define BUZZER_PIN 2
+#define THERMOLIED_PIN 4 
+#define SDA_LCD 19
+#define SCL_LCD 18
 
 adc_channel_t channel = ADC_CHANNEL_0; 
 adc_unit_t unit = ADC_UNIT_2;
@@ -17,7 +21,7 @@ esp_adc_cal_value_t val_type;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 struct Door{
-    int pin = 34; 
+    int pin = 15; 
     bool open = false;
     long unsigned lastOpen = 0;
     bool changed = false; 
@@ -44,7 +48,6 @@ void IRAM_ATTR doorInterrupt(){
 
 }
 
-
 float getRoomTemp(){
     uint32_t adc_reading = 0;
     for (int i = 0; i < NO_OF_SAMPLES; i++){
@@ -70,11 +73,11 @@ float getRoomTemp(){
 
 
 void setup(){
+    pinMode(door.pin, INPUT_PULLDOWN);
+    pinMode(2, OUTPUT);
+    attachInterrupt(door.pin, doorInterrupt, FALLING);
 
-    pinMode(34, INPUT_PULLUP);
-    attachInterrupt(34, doorInterrupt, RISING);
-
-    Wire.begin(19, 18);
+    Wire.begin(SDA_LCD, SCL_LCD);
     lcd.init();
     lcd.backlight();
     Serial.begin(115200);
