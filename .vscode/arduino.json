@@ -1,7 +1,7 @@
 {
     "port": "COM4",
-    "configuration": "PartitionScheme=default,FlashMode=qio,FlashFreq=80,UploadSpeed=921600,DebugLevel=none",
-    "board": "esp32:esp32:esp32wrover",
+    "configuration": "FlashFreq=80,UploadSpeed=921600,DebugLevel=debug",
+    "board": "esp32:esp32:esp32doit-devkit-v1",
     "programmer": "esp32:esptool",
     "sketch": "main2\\main2.ino",
     "output": "./old/"
