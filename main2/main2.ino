@@ -53,9 +53,10 @@ struct Object{
 };
 
 struct Door{
-    int pin = 34; 
+    int pin = 12; 
+    bool before; 
     bool open = false;
-    long unsigned lastOpen = 0;
+    long unsigned lastOpen;
     bool changed = false; 
 };
 
@@ -257,9 +258,9 @@ void setup(){
     // Basic setup esp32 
     Serial.begin(115200);
 
-    // pinMode(door.pin, INPUT_PULLDOWN);
+    pinMode(door.pin, INPUT_PULLDOWN);
     pinMode(BUZZER_PIN, OUTPUT);
-    // attachInterrupt(door.pin, doorInterrupt, RISING);
+    attachInterrupt(door.pin, doorInterrupt, RISING);
 
     // setup lcd op pin 18, 19
     Wire.begin(SDA_LCD, SCL_LCD);
@@ -300,16 +301,16 @@ void loop(){
         float readTemp = getRoomTemp();
         // int state = State::NORMAL;
         koelkast.wsState = State::NORMAL;
+
         
         if (door.changed){
-            if (door.open){
-                koelkast.wsState = State::OPEN_DOOR;
-                door.changed = false; 
-            } else {
-                koelkast.wsState = State::NORMAL;
-            }
+            if (door.open) koelkast.wsState = State::OPEN_DOOR;
+            door.changed = false; 
+            
+        } else {
+            koelkast.wsState = State::NORMAL;
         }
-
+        
         if (readTemp > koelkast.highestTemp){
             koelkast.wsState = State::TO_HIGH;
 
@@ -331,6 +332,8 @@ void loop(){
         
         updateDisplay(readTemp);
         koelkast.hasUpdate = false;
+        // door.open = false; 
+        door.open = digitalRead(door.pin); 
     }
    
     // delay(1000);
