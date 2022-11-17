@@ -301,7 +301,7 @@ void loop(){
         float readTemp = getRoomTemp();
         // int state = State::NORMAL;
         koelkast.wsState = State::NORMAL;
-
+        digitalWrite(2, LOW);
         
         if (door.changed){
             if (door.open) koelkast.wsState = State::OPEN_DOOR;
@@ -333,8 +333,11 @@ void loop(){
         updateDisplay(readTemp);
         koelkast.hasUpdate = false;
         // door.open = false; 
-        door.open = digitalRead(door.pin); 
+        door.open = digitalRead(door.pin);
     }
+    if (door.open && getRoomTemp() > koelkast.highestTemp){ 
+       digitalWrite(2, HIGH); 
+    } 
    
     // delay(1000);
     
