@@ -17,6 +17,8 @@
 #define THERMOLIED_PIN 34 
 #define SDA_LCD 19
 #define SCL_LCD 18
+#define LED_PIN 32
+
 
 hw_timer_t *Timer = NULL;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
@@ -53,7 +55,7 @@ struct Object{
 };
 
 struct Door{
-    int pin = 12; 
+    int pin = 35; 
     bool before; 
     bool open = false;
     long unsigned lastOpen;
@@ -151,14 +153,24 @@ void handleSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     }
 }
 
-void IRAM_ATTR doorInterrupt(){
-    long unsigned currentTime = millis();
+// void IRAM_ATTR doorInterrupt(){
+//     long unsigned currentTime = millis();
 
-    // if ((currentTime - door.lastOpen) > 1000){
-        door.open = true;
-        door.changed = true; 
-        door.lastOpen = currentTime;    
-    // }
+//     // if ((currentTime - door.lastOpen) > 1000){
+//         door.open = true;
+//         door.changed = true; 
+//         door.lastOpen = currentTime;    
+//     // }
+// }
+
+void IRAM_ATTR doorDicht(){
+    door.open = false;
+    door.lastOpen = millis();
+}
+
+void IRAM_ATTR doorOpen(){
+    door.open = true; 
+    door.lastOpen = millis();
 }
 
 void IRAM_ATTR timerInterrupt(){
@@ -260,7 +272,9 @@ void setup(){
 
     pinMode(door.pin, INPUT_PULLDOWN);
     pinMode(BUZZER_PIN, OUTPUT);
-    attachInterrupt(door.pin, doorInterrupt, RISING);
+
+    attachInterrupt(door.pin, doorDicht, RISING);
+    attachInterrupt(door.pin, doorOpen, FALLING);
 
     // setup lcd op pin 18, 19
     Wire.begin(SDA_LCD, SCL_LCD);
@@ -299,10 +313,11 @@ void loop(){
     // true every second. 
     if (koelkast.hasUpdate){
         float readTemp = getRoomTemp();
-        // int state = State::NORMAL;
         koelkast.wsState = State::NORMAL;
-        digitalWrite(2, LOW);
-        
+
+        digitalWrite(BUZZER_PIN, LOW);
+        digitalWrite(LED_PIN, LOW);
+
         if (door.changed){
             if (door.open) koelkast.wsState = State::OPEN_DOOR;
             door.changed = false; 
@@ -315,7 +330,7 @@ void loop(){
             koelkast.wsState = State::TO_HIGH;
 
             if (door.open && ( (millis() - door.lastOpen) < (2 * 60 * 1000))){
-                // Serial.println("Door open for to long..");
+                Serial.println("Door open for to long..");
             }
 
         }else if (readTemp < koelkast.lowestTemp){
@@ -333,12 +348,14 @@ void loop(){
         updateDisplay(readTemp);
         koelkast.hasUpdate = false;
         // door.open = false; 
-        door.open = digitalRead(door.pin);
+        // door.open = digitalRead(door.pin);
     }
-    if (door.open && getRoomTemp() > koelkast.highestTemp){ 
-       digitalWrite(2, HIGH); 
-    } 
-   
+
+    if (door.open && getRoomTemp() > koelkast.highestTemp && (millis() - door.lastOpen) > (10*1000) ){ 
+       digitalWrite(BUZZER_PIN, HIGH); 
+
+    }
+    
     // delay(1000);
     
 }
