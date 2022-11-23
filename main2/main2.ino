@@ -165,11 +165,13 @@ void handleSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
 void IRAM_ATTR doorDicht(){
     door.open = false;
+    door.changed = true; 
     door.lastOpen = millis();
 }
 
 void IRAM_ATTR doorOpen(){
     door.open = true; 
+    door.changed = true; 
     door.lastOpen = millis();
 }
 
@@ -273,8 +275,8 @@ void setup(){
     pinMode(door.pin, INPUT_PULLDOWN);
     pinMode(BUZZER_PIN, OUTPUT);
 
-    attachInterrupt(door.pin, doorDicht, RISING);
-    attachInterrupt(door.pin, doorOpen, FALLING);
+    attachInterrupt(door.pin, doorDicht, FALLING);
+    attachInterrupt(door.pin, doorOpen,  RISING);
 
     // setup lcd op pin 18, 19
     Wire.begin(SDA_LCD, SCL_LCD);
@@ -327,14 +329,14 @@ void loop(){
         }
         
         if (readTemp > koelkast.highestTemp){
-            koelkast.wsState = State::TO_HIGH;
+            // koelkast.wsState = State::TO_HIGH;
 
             if (door.open && ( (millis() - door.lastOpen) < (2 * 60 * 1000))){
                 Serial.println("Door open for to long..");
             }
 
         }else if (readTemp < koelkast.lowestTemp){
-            koelkast.wsState = State::TO_LOW;
+            // koelkast.wsState = State::TO_LOW;
 
             if (( (millis() - door.lastOpen) > (2 * 60 * 1000))){
                 // Serial.println("Koelkast is kapot.. check de deur!");
@@ -348,12 +350,12 @@ void loop(){
         updateDisplay(readTemp);
         koelkast.hasUpdate = false;
         // door.open = false; 
-        // door.open = digitalRead(door.pin);
+        door.open = digitalRead(door.pin);
+        Serial.println(door.open);
     }
 
-    if (door.open && getRoomTemp() > koelkast.highestTemp && (millis() - door.lastOpen) > (10*1000) ){ 
-       digitalWrite(BUZZER_PIN, HIGH); 
-
+    if (getRoomTemp() > koelkast.highestTemp && (millis() - door.lastOpen) > (10*1000)){ 
+       digitalWrite(BUZZER_PIN, HIGH);
     }
     
     // delay(1000);
