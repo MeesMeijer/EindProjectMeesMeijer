@@ -8,6 +8,8 @@
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
+#include <list> 
+#include <bits/stdc++.h>
 
 #define PIN_ANALOG_IN 34              
 #define DEFAULT_VREF 1100              
@@ -19,12 +21,10 @@
 #define SCL_LCD 18
 #define LED_PIN 32
 
-
 hw_timer_t *Timer = NULL;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 Preferences localStorage;
 WebSocketsClient webSocket;
-
 
 enum State{
     STARTING = 0,
@@ -52,6 +52,8 @@ struct Object{
     int state = State::NORMAL;
     int wsState = State::NORMAL;
     int doorState = State::NORMAL; 
+
+    std::list<float> last30Sec;
 };
 
 struct Door{
@@ -102,6 +104,7 @@ void handleSocketEvent(WStype_t type, uint8_t *payload, size_t length)
             Serial.printf("[WSc] Connected to url: %s\n", payload);
             webSocket.sendTXT("Connected");
             koelkast.wsState = State::CONNECTED;
+            koelkast.wsState = State::GOT_IP;
             break;
 
         case WStype_TEXT:
@@ -153,16 +156,6 @@ void handleSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     }
 }
 
-// void IRAM_ATTR doorInterrupt(){
-//     long unsigned currentTime = millis();
-
-//     // if ((currentTime - door.lastOpen) > 1000){
-//         door.open = true;
-//         door.changed = true; 
-//         door.lastOpen = currentTime;    
-//     // }
-// }
-
 void IRAM_ATTR doorDicht(){
     door.open = false;
     door.changed = true; 
@@ -209,7 +202,6 @@ void updateDisplay(float tempInC = 0.0){
     if (clock1.hours < 10.0){
         Hours = "0"+Hours;
     }
-
     lcd.printf("%.1f C   %s:%s", tempInC, Hours, mins);
     lcd.setCursor(0,1);
 
@@ -220,7 +212,7 @@ void updateDisplay(float tempInC = 0.0){
 
         case State::CONNECTED:
             lcd.printf("%s", "Ws Connected");
-            koelkast.wsState = State::NORMAL;
+            koelkast.wsState = State::GOT_IP;
             break;
 
         case State::RE_CONNECTING:
@@ -268,15 +260,14 @@ float getRoomTemp(){
 
 void setup(){
     WiFi.mode(WIFI_STA);
-
-    // Basic setup esp32 
     Serial.begin(115200);
 
     pinMode(door.pin, INPUT_PULLDOWN);
     pinMode(BUZZER_PIN, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
 
-    attachInterrupt(door.pin, doorDicht, FALLING);
-    attachInterrupt(door.pin, doorOpen,  RISING);
+    attachInterrupt(door.pin, doorDicht, RISING);
+    attachInterrupt(door.pin, doorOpen,  FALLING);
 
     // setup lcd op pin 18, 19
     Wire.begin(SDA_LCD, SCL_LCD);
@@ -297,16 +288,21 @@ void setup(){
     if (!res){
         Serial.println("Coudnt connected..");
     }else{
-        // Serial.println(WiFi.isConnected());
         Serial.println("Conencted to Wifi");
     }
 
     webSocket.enableHeartbeat(1000, 6000, 0);
     webSocket.beginSSL("project1.meesinc.nl", 443);
     webSocket.onEvent(handleSocketEvent);
-    webSocket.setExtraHeaders("AUTHENTICATION: SECRET_TOKEN_2022");
     webSocket.setExtraHeaders("UUID: 1");
     webSocket.setReconnectInterval(1000);
+}
+
+float getAverageTemp(){
+    int temps = koelkast.last30Sec.size(); 
+    float Bignumber = 0.0;
+    for (std::list<float>::iterator it=koelkast.last30Sec.begin(); it != koelkast.last30Sec.end(); ++it)  Bignumber += *it;
+    return (Bignumber / (temps));
 }
 
 void loop(){
@@ -314,50 +310,48 @@ void loop(){
     
     // true every second. 
     if (koelkast.hasUpdate){
+
         float readTemp = getRoomTemp();
-        koelkast.wsState = State::NORMAL;
+        koelkast.hasUpdate = false; 
+        door.open = !digitalRead(door.pin);
 
-        digitalWrite(BUZZER_PIN, LOW);
-        digitalWrite(LED_PIN, LOW);
+        if ((float)readTemp > koelkast.highestTemp){
+            koelkast.wsState = State::TO_HIGH;
 
-        if (door.changed){
-            if (door.open) koelkast.wsState = State::OPEN_DOOR;
-            door.changed = false; 
-            
-        } else {
+            if (door.open && (door.lastOpen < (millis() - (20*1000)))){
+                digitalWrite(LED_PIN, HIGH);
+                digitalWrite(BUZZER_PIN, HIGH);
+            }else if (door.lastOpen < (millis() - (30*1000))){
+                digitalWrite(LED_PIN, HIGH);
+                digitalWrite(BUZZER_PIN, HIGH);
+            }else {
+                digitalWrite(LED_PIN, LOW);
+                digitalWrite(BUZZER_PIN, LOW);         
+            }
+
+        }
+        else if ((float)readTemp < koelkast.lowestTemp) koelkast.wsState = State::TO_LOW;
+        else if (float(readTemp < koelkast.highestTemp && readTemp > koelkast.lowestTemp)){
             koelkast.wsState = State::NORMAL;
-        }
-        
-        if (readTemp > koelkast.highestTemp){
-            // koelkast.wsState = State::TO_HIGH;
-
-            if (door.open && ( (millis() - door.lastOpen) < (2 * 60 * 1000))){
-                Serial.println("Door open for to long..");
-            }
-
-        }else if (readTemp < koelkast.lowestTemp){
-            // koelkast.wsState = State::TO_LOW;
-
-            if (( (millis() - door.lastOpen) > (2 * 60 * 1000))){
-                // Serial.println("Koelkast is kapot.. check de deur!");
+            if (door.open && (door.lastOpen < (millis() - (30*1000)))){
+                digitalWrite(LED_PIN, HIGH);
+                digitalWrite(BUZZER_PIN, HIGH);
+            }else{
+                digitalWrite(LED_PIN, LOW);
+                digitalWrite(BUZZER_PIN, LOW);
             }
         }
 
+        if (door.open){
+            if (door.changed){
+                koelkast.wsState = State::OPEN_DOOR;
+                door.changed = false;
+            }
+        }
+
+        updateDisplay(readTemp);
         if (webSocket.isConnected()){
             webSocket.sendTXT("READINGS:"+(String)readTemp+ "|"+ (String)door.open);
         }
-        
-        updateDisplay(readTemp);
-        koelkast.hasUpdate = false;
-        // door.open = false; 
-        door.open = digitalRead(door.pin);
-        Serial.println(door.open);
     }
-
-    if (getRoomTemp() > koelkast.highestTemp && (millis() - door.lastOpen) > (10*1000)){ 
-       digitalWrite(BUZZER_PIN, HIGH);
-    }
-    
-    // delay(1000);
-    
 }
